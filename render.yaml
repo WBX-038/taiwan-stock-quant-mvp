@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: taiwan-stock-quant-mvp
+    runtime: python
+    plan: free
+    buildCommand: pip install -r backend/requirements.lock.txt
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: YFINANCE_CACHE_PATH
+        value: /tmp/yfinance_cache
+      - key: PYTHONUNBUFFERED
+        value: "1"
