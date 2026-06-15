@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>台灣上市櫃股票量化評分 MVP</title>
+    <style>
+      :root { color: #192027; background: #f4f6f8; font-family: "Noto Sans TC", "Segoe UI", Arial, sans-serif; }
+      * { box-sizing: border-box; }
+      body { margin: 0; }
+      main { max-width: 1180px; margin: 0 auto; padding: 28px 18px 48px; }
+      h1, h2, h3, p { margin: 0; }
+      .eyebrow { color: #52636f; font-size: 13px; font-weight: 700; }
+      .topbar h1 { font-size: 32px; margin-top: 4px; }
+      .hint { color: #52636f; margin-top: 6px; }
+      .search { display: grid; grid-template-columns: 1fr auto; gap: 10px; background: #fff; border: 1px solid #d7dee5; border-radius: 8px; padding: 10px; margin: 18px 0 16px; }
+      input { min-width: 0; border: 0; outline: 0; font: inherit; padding: 8px; }
+      button { border: 0; border-radius: 6px; background: #1f6f5f; color: #fff; font-weight: 700; padding: 10px 18px; cursor: pointer; }
+      button:disabled { background: #8aa69f; cursor: wait; }
+      .summary, .panel, .empty, .error, .disclaimer { background: #fff; border: 1px solid #d7dee5; border-radius: 8px; }
+      .summary { display: grid; grid-template-columns: 1fr auto auto; gap: 22px; align-items: center; padding: 22px; margin-bottom: 16px; }
+      .summary h1 { font-size: 26px; }
+      .scoreBlock { text-align: right; }
+      .score { display: block; font-size: 42px; font-weight: 800; color: #174a7c; }
+      .rating { color: #1f6f5f; font-weight: 800; }
+      .metaGrid { display: grid; gap: 8px; min-width: 130px; }
+      .metaGrid div { display: flex; justify-content: space-between; gap: 14px; }
+      .muted, .factorCard p, .factorCard small, .qualityItem p, .businessText { color: #52636f; }
+      .panel { padding: 20px; margin-bottom: 16px; }
+      .panel h2 { font-size: 20px; margin-bottom: 14px; }
+      .infoGrid { display: grid; grid-template-columns: minmax(220px, 320px) 1fr; gap: 16px; }
+      .infoBox { border: 1px solid #dce3e9; border-radius: 8px; padding: 14px; background: #fbfcfd; }
+      .infoBox h3 { margin-bottom: 8px; }
+      .chartWrap { width: 100%; overflow-x: auto; }
+      .chartSvg { width: 100%; min-width: 760px; height: 340px; display: block; background: #fbfcfd; border: 1px solid #dce3e9; border-radius: 8px; }
+      .chartMeta { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 10px; color: #52636f; font-size: 13px; }
+      .factorGrid, .qualityGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 20px; }
+      .factorCard, .qualityItem { border: 1px solid #dce3e9; border-radius: 8px; padding: 14px; background: #fbfcfd; }
+      .factorTop { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+      .factorScore { font-size: 30px; font-weight: 800; margin: 8px 0 4px; }
+      .pill { display: inline-flex; white-space: nowrap; border-radius: 999px; padding: 3px 8px; font-size: 12px; font-weight: 700; background: #e8edf2; color: #33424f; }
+      .pill.ok { background: #dff3e9; color: #17623e; }
+      .pill.low_confidence { background: #fff0c2; color: #7a5500; }
+      .pill.missing { background: #f1e4e4; color: #833535; }
+      .tableWrap { overflow-x: auto; }
+      table { width: 100%; min-width: 860px; border-collapse: collapse; }
+      th, td { border-bottom: 1px solid #e3e8ed; padding: 10px 8px; text-align: left; vertical-align: top; }
+      th { color: #52636f; font-size: 13px; }
+      .warnings { border-top: 1px solid #e3e8ed; padding-top: 14px; }
+      .warnings h3 { margin-bottom: 8px; }
+      .warningText, .warnings p { color: #8a4c16; }
+      .error { color: #8f2f2f; padding: 14px; margin-bottom: 16px; }
+      .empty { display: grid; gap: 6px; padding: 26px; color: #52636f; }
+      .disclaimer { padding: 14px; color: #6c3f16; background: #fff8e9; }
+      @media (max-width: 760px) {
+        main { padding: 18px 12px 34px; }
+        .topbar h1 { font-size: 24px; }
+        .summary, .infoGrid { grid-template-columns: 1fr; }
+        .scoreBlock { text-align: left; }
+        .search { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="topbar">
+        <p class="eyebrow">Taiwan Listed / OTC Quant MVP</p>
+        <h1>台灣上市櫃股票量化評分</h1>
+        <p class="hint">可輸入任意上市櫃股票代號或內建中文名稱，例如 1101、2330、8299、台積電。</p>
+      </section>
+      <form class="search" id="searchForm">
+        <input id="query" value="2330" placeholder="輸入股票代號或名稱，例如 1101 / 2330 / 8299 / 台積電" />
+        <button id="submit" type="submit">分析</button>
+      </form>
+      <div id="content" class="empty">
+        <strong>輸入股票代號或名稱開始分析</strong>
+        <span>系統會先嘗試 .TW，再嘗試 .TWO；缺資料子因子會排除並重分配權重。</span>
+      </div>
+    </main>
+    <script>
+      const factorLabels = {
+        Momentum: "動量",
+        FundamentalHealth: "基本面健康度",
+        TrendQuality: "趨勢品質",
+        Growth: "市場成長",
+        Volatility: "波動風險",
+        Liquidity: "流動性/市場關注",
+        MarketRelative: "相對大盤",
+        RiskReward: "風險報酬",
+      };
+      const statusLabels = { ok: "可用", low_confidence: "低信心", missing: "缺資料" };
+      const content = document.getElementById("content");
+      const form = document.getElementById("searchForm");
+      const queryInput = document.getElementById("query");
+      const submit = document.getElementById("submit");
+
+      function esc(value) {
+        return String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[c]));
+      }
+      function fmt(value) {
+        if (value === null || value === undefined) return "missing";
+        if (typeof value === "number") return Number.isFinite(value) ? value.toFixed(4) : "missing";
+        if (typeof value === "string") return value;
+        try { return JSON.stringify(value); } catch { return String(value); }
+      }
+      function fmtDate(value) {
+        if (!value) return "未知";
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? "未知" : date.toLocaleString("zh-TW");
+      }
+      function drawCandles(candles) {
+        const data = (candles || []).filter((d) => [d.open, d.high, d.low, d.close].every((v) => typeof v === "number" && Number.isFinite(v)));
+        if (data.length < 2) return `<div class="empty">K 線資料不足</div>`;
+        const width = 900, height = 320, pad = { left: 54, right: 18, top: 18, bottom: 42 };
+        const prices = data.flatMap((d) => [d.high, d.low]);
+        const min = Math.min(...prices), max = Math.max(...prices);
+        const span = max - min || 1;
+        const xStep = (width - pad.left - pad.right) / data.length;
+        const candleWidth = Math.max(3, Math.min(9, xStep * 0.62));
+        const y = (price) => pad.top + (max - price) / span * (height - pad.top - pad.bottom);
+        const grid = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+          const yy = pad.top + ratio * (height - pad.top - pad.bottom);
+          const price = max - ratio * span;
+          return `<line x1="${pad.left}" y1="${yy}" x2="${width - pad.right}" y2="${yy}" stroke="#e3e8ed"/><text x="8" y="${yy + 4}" font-size="11" fill="#52636f">${price.toFixed(1)}</text>`;
+        }).join("");
+        const marks = data.map((d, i) => {
+          const x = pad.left + i * xStep + xStep / 2;
+          const up = d.close >= d.open;
+          const color = up ? "#c2413b" : "#1f6f5f";
+          const top = Math.min(y(d.open), y(d.close));
+          const bodyHeight = Math.max(1, Math.abs(y(d.close) - y(d.open)));
+          const label = i === 0 || i === data.length - 1 ? `<text x="${x - 28}" y="${height - 16}" font-size="11" fill="#52636f">${esc(d.date.slice(5))}</text>` : "";
+          return `<line x1="${x}" y1="${y(d.high)}" x2="${x}" y2="${y(d.low)}" stroke="${color}" stroke-width="1.2"/><rect x="${x - candleWidth / 2}" y="${top}" width="${candleWidth}" height="${bodyHeight}" fill="${color}"/>${label}`;
+        }).join("");
+        return `<div class="chartWrap"><svg class="chartSvg" viewBox="0 0 ${width} ${height}" role="img" aria-label="最近 90 日 K 線圖">${grid}${marks}</svg></div>`;
+      }
+      function render(result) {
+        const adjustedTotal = Object.values(result.adjusted_weights || {}).reduce((sum, value) => sum + value, 0);
+        const candles = result.chart_data || [];
+        const latest = candles.length ? candles[candles.length - 1] : null;
+        const factors = Object.entries(result.factor_scores || {}).map(([name, data]) => `
+          <article class="factorCard">
+            <div class="factorTop"><h3>${esc(factorLabels[name] || name)}</h3><span class="pill ${esc(data.status)}">${esc(statusLabels[data.status] || data.status)}</span></div>
+            <div class="factorScore">${data.score_0_to_100 === null ? "missing" : Number(data.score_0_to_100).toFixed(2)}</div>
+            <p>${data.available_subfactors}/${data.total_subfactors} 子因子可用</p>
+            <small>調整後權重：${result.adjusted_weights?.[name] === undefined ? "0.00" : Number(result.adjusted_weights[name]).toFixed(2)}%</small>
+          </article>`).join("");
+        const rows = Object.entries(result.subfactor_scores || {}).flatMap(([factor, subs]) =>
+          Object.entries(subs).map(([name, sub]) => `
+            <tr>
+              <td>${esc(factorLabels[factor] || factor)}</td><td>${esc(name)}</td><td>${esc(fmt(sub.raw_value))}</td>
+              <td>${sub.score_0_to_100 === null ? "missing" : Number(sub.score_0_to_100).toFixed(2)}</td>
+              <td><span class="pill ${esc(sub.status)}">${esc(statusLabels[sub.status] || sub.status)}</span></td><td>${esc(sub.reason)}</td>
+            </tr>`)).join("");
+        const quality = Object.entries(result.data_quality || {}).map(([name, point]) => `
+          <article class="qualityItem">
+            <h3>${esc(name)}</h3><p>來源：${esc(point.source)}</p><p>更新：${esc(fmtDate(point.last_updated))}</p>
+            <p>即時：${point.is_realtime ? "是" : "否"}</p><p>延遲：${point.delay_minutes === null ? "未知" : esc(point.delay_minutes) + " 分鐘"}</p>
+            <p>信心：${Math.round((point.confidence || 0) * 100)}%</p>${point.missing_reason ? `<p class="warningText">${esc(point.missing_reason)}</p>` : ""}
+          </article>`).join("");
+        const warnings = (result.warnings || []).map((w) => `<p>${esc(w)}</p>`).join("");
+        content.className = "";
+        content.innerHTML = `
+          <section class="summary">
+            <div><p class="eyebrow">${esc(result.resolved_symbol)}</p><h1>${esc(result.company_name || result.resolved_symbol)}</h1></div>
+            <div class="scoreBlock"><span class="score">${result.final_score === null ? "資料不足" : Number(result.final_score).toFixed(2)}</span><span class="rating">${esc(result.rating)}</span></div>
+            <div class="metaGrid"><div><span class="muted">模型信心</span><strong>${Math.round((result.confidence || 0) * 100)}%</strong></div><div><span class="muted">可用權重</span><strong>${Math.round(adjustedTotal)}%</strong></div></div>
+          </section>
+          <section class="panel">
+            <h2>營業焦點與產業</h2>
+            <div class="infoGrid">
+              <article class="infoBox"><h3>產業分類</h3><p>${esc(result.industry_category || "尚無公開產業分類")}</p></article>
+              <article class="infoBox"><h3>營業焦點</h3><p class="businessText">${esc(result.business_focus || "尚無可用營業摘要；可參考公司公開資訊觀測站與年報。")}</p></article>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="chartMeta"><h2>K 線圖</h2><span>${latest ? `最新收盤：${Number(latest.close).toFixed(2)} (${esc(latest.date)})` : "價格資料不足"}</span></div>
+            ${drawCandles(candles)}
+          </section>
+          <section class="panel"><h2>7 大因子</h2><div class="factorGrid">${factors}</div><h2>子因子明細</h2><div class="tableWrap"><table><thead><tr><th>因子</th><th>子因子</th><th>原始值</th><th>分數</th><th>狀態</th><th>原因</th></tr></thead><tbody>${rows}</tbody></table></div></section>
+          <section class="panel"><h2>資料品質</h2><div class="qualityGrid">${quality}</div>${warnings ? `<div class="warnings"><h3>Warnings</h3>${warnings}</div>` : ""}</section>
+          <footer class="disclaimer">${esc(result.disclaimer)}</footer>`;
+      }
+      async function analyze(query) {
+        submit.disabled = true;
+        submit.textContent = "分析中";
+        content.className = "empty";
+        content.innerHTML = "<strong>正在抓取公開資料並計算評分</strong><span>資料可能延遲、缺漏或受限流影響。</span>";
+        try {
+          const response = await fetch(`/api/analyze?query=${encodeURIComponent(query)}`);
+          const body = await response.json();
+          if (!response.ok) throw new Error(body.detail || "分析失敗");
+          render(body);
+        } catch (error) {
+          content.className = "error";
+          content.textContent = error instanceof Error ? error.message : "分析失敗";
+        } finally {
+          submit.disabled = false;
+          submit.textContent = "分析";
+        }
+      }
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const query = queryInput.value.trim();
+        if (query) analyze(query);
+      });
+    </script>
+  </body>
+</html>
